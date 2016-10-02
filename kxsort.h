@@ -21,7 +21,6 @@
    CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE.
 */
-
 #ifndef KXSORT_H__
 #define KXSORT_H__
 
@@ -31,14 +30,14 @@
 namespace kx {
 
 static const int kRadixBits = 8;
-static const unsigned kInsertSortThreshold = 64;
+static const size_t kInsertSortThreshold = 64;
 static const int kRadixMask = (1 << kRadixBits) - 1;
 static const int kRadixBin = 1 << kRadixBits;
 
 //================= HELPING FUNCTIONS ====================
 
 template <class T>
-struct RadixByteDefault {
+struct RadixByteUnsigned {
     static const int nBytes = sizeof(T);
     int operator() (const T &x, int k) { return (x >> (kRadixBits * k)) & kRadixMask; }
 };
@@ -116,14 +115,14 @@ inline void radix_sort_entry_(RandomAccessIterator s, RandomAccessIterator e, Va
         insert_sort_core_<RandomAccessIterator, ValueType, Compare>(s, e, cmp);
     else
         radix_sort_core_<RandomAccessIterator, ValueType, RadixByte,
-                          Compare, RadixByte::nBytes>(s, e, rbyte, cmp);
+                          Compare, RadixByte::nBytes - 1>(s, e, rbyte, cmp);
 }
 
 template <class RandomAccessIterator, class ValueType>
 inline void radix_sort_entry_(RandomAccessIterator s, RandomAccessIterator e, ValueType *)
 {
     if (ValueType(-1) > ValueType(0)) {
-        radix_sort_entry_(s, e, (ValueType*)(0), RadixByteDefault<ValueType>(), std::less<ValueType>());
+        radix_sort_entry_(s, e, (ValueType*)(0), RadixByteUnsigned<ValueType>(), std::less<ValueType>());
     } else {
         radix_sort_entry_(s, e, (ValueType*)(0), RadixByteSigned<ValueType>(), std::less<ValueType>());
     }
