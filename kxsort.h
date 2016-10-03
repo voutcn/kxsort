@@ -21,6 +21,7 @@
    CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE.
 */
+
 #ifndef KXSORT_H__
 #define KXSORT_H__
 
@@ -70,27 +71,31 @@ inline void insert_sort_core_(RandomAccessIterator s, RandomAccessIterator e, Co
 template <class RandomAccessIterator, class ValueType, class RadixByte, class Compare, int kWhichByte>
 inline void radix_sort_core_(RandomAccessIterator s, RandomAccessIterator e, RadixByte rbyte, Compare cmp)
 {
+    RandomAccessIterator last_[kRadixBin + 1];
+    RandomAccessIterator *last = last_ + 1;
     size_t count[kRadixBin] = {0};
-    RandomAccessIterator bin_s[kRadixBin], bin_e[kRadixBin];
 
-    for (RandomAccessIterator i = s; i < e; ++i) ++count[rbyte(*i, kWhichByte)];
+    for (RandomAccessIterator i = s; i < e; ++i) {
+        ++count[rbyte(*i, kWhichByte)];
+    }
 
-    bin_s[0] = s; bin_e[kRadixBin - 1] = e;
+    last_[0] = last_[1] = s;
     for (int i = 1; i < kRadixBin; ++i) {
-        bin_e[i-1] = bin_s[i] = bin_s[i-1] + count[i-1];
+        last[i] = last[i-1] + count[i-1];
     }
 
     for (int i = 0; i < kRadixBin; ++i) {
-        while (bin_s[i] < bin_e[i]) {
-            ValueType swapper = *bin_s[i];
-            int bin_tag = rbyte(swapper, kWhichByte);
-            if (bin_tag != i) {
+        RandomAccessIterator end = last[i-1] + count[i];
+        while (last[i] != end) {
+            ValueType swapper = *last[i];
+            int tag = rbyte(swapper, kWhichByte);
+            if (tag != i) {
                 do {
-                    std::swap(swapper, *(bin_s[bin_tag]++));
-                } while ((bin_tag = rbyte(swapper, kWhichByte)) != i);
-                *bin_s[i] = swapper;
+                    std::swap(swapper, *last[tag]++);
+                } while ((tag = rbyte(swapper, kWhichByte)) != i);
+                *last[i] = swapper;
             }
-            ++bin_s[i];
+            ++last[i];
         }
     }
 
@@ -99,9 +104,9 @@ inline void radix_sort_core_(RandomAccessIterator s, RandomAccessIterator e, Rad
             if (count[i] > kInsertSortThreshold) {
                 radix_sort_core_<RandomAccessIterator, ValueType, RadixByte, Compare,
                                   (kWhichByte > 0 ? (kWhichByte - 1) : 0)>
-                                  (bin_e[i] - count[i], bin_e[i], rbyte, cmp);
+                                  (last[i-1], last[i], rbyte, cmp);
             } else if (count[i] > 1) {
-                insert_sort_core_<RandomAccessIterator, ValueType, Compare>(bin_e[i] - count[i], bin_e[i], cmp);
+                insert_sort_core_<RandomAccessIterator, ValueType, Compare>(last[i-1], last[i], cmp);
             }
         }
     }
