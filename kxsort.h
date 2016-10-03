@@ -116,7 +116,7 @@ template <class RandomAccessIterator, class ValueType, class RadixByte, class Co
 inline void radix_sort_entry_(RandomAccessIterator s, RandomAccessIterator e, ValueType*,
                               RadixByte rbyte, Compare cmp)
 {
-    if (e - s <= kInsertSortThreshold)
+    if (size_t(e - s) <= kInsertSortThreshold)
         insert_sort_core_<RandomAccessIterator, ValueType, Compare>(s, e, cmp);
     else
         radix_sort_core_<RandomAccessIterator, ValueType, RadixByte,
