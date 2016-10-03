@@ -85,7 +85,14 @@ KRADIX_SORT_INIT(u32, uint32_t, sort_key_u32, 4)
 KRADIX_SORT_INIT(i32, int, sort_key_i32, 4)
 
 int main(int argc, char **argv) {
-	for (unsigned long long N = 1 << 20; N <= (1 << 30); N <<= 2) {
+	unsigned long long n = 1000000000;
+	if (argc < 2) {
+		fprintf(stderr, "Usage: %s [n=%llu]\n", argv[0], n);
+	} else {
+		n = atoll(argv[1]);
+	}
+
+	for (unsigned long long N = 1000000; N <= n; N *= 10) {
 		fprintf(stderr, "%llu:\n", N);
 		test_sort_i32("kx::radix_sort", N, kx::radix_sort(a, a + N));
 		test_sort_i32("klib_radix_sort", N, radix_sort_i32(a, a + N));
