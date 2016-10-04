@@ -25,6 +25,8 @@
 #ifndef KXSORT_H__
 #define KXSORT_H__
 
+#include <stdint.h>
+#include <memory.h>
 #include <iterator>
 #include <algorithm>
 
@@ -38,26 +40,81 @@ static const int kRadixBin = 1 << kRadixBits;
 //================= HELPING FUNCTIONS ====================
 
 template <class T>
-struct RadixByteUnsigned {
-    static const int nBytes = sizeof(T);
-    int operator() (const T &x, int k) { return (x >> (kRadixBits * k)) & kRadixMask; }
-};
-
-template<class T>
-struct RadixByteSigned {
-    static const int nBytes = sizeof(T);
-    static const T kMSB = T(0x80) << ((sizeof(T) - 1) * 8);
-    int operator() (const T &x, int k) {
-        return ((x ^ kMSB) >> (kRadixBits * k)) & kRadixMask;
+struct GetKeyUnsignedInteger {
+    static const int nBits = sizeof(T) * 8;
+    T operator() (const T &x) {
+        return x;
     }
 };
 
-template <class RandomAccessIterator, class ValueType, class Compare>
-inline void insert_sort_core_(RandomAccessIterator s, RandomAccessIterator e, Compare cmp)
+template <class T>
+struct GetKeySignedInteger {
+    static const T kMSB = T(0x80) << ((sizeof(T) - 1) * 8);
+    static const int nBits = sizeof(T) * 8;
+    T operator() (const T &x) {
+        return x ^ kMSB;
+    }
+};
+
+template <class GetKey, class T>
+struct CompareKey {
+    bool operator() (const T &a, const T &b) {
+        return GetKey()(a) < GetKey()(b);
+    }
+};
+
+template <int N>
+struct GenericUint {
+    static const int kNumUint64 = (N + 7) / 8;
+    uint64_t data_[kNumUint64];
+
+    GenericUint() {
+        memset(data_, 0, sizeof(data_));
+    }
+
+    void set(int pos, int length, uint64_t val) {
+        int offset = pos % 64;
+        int idx = pos / 64;
+        data_[idx] |= val << offset;
+        if (offset + length > 64) {
+            data_[idx+1] |= val >> (64 - offset);
+        }
+    }
+
+    bool operator<(const GenericUint<N> &rhs) const {
+        for (int i = kNumUint64 - 1; i >= 0; --i) {
+            if (data_[i] != rhs.data_[i]) return data_[i] < rhs.data_[i];
+        }
+        return false;
+    }
+};
+
+template <int pos, int length, int N>
+void set(GenericUint<N> &a, uint64_t val) {
+    const int offset = pos % 64;
+    const int idx = pos / 64;
+    a.data_[idx] |= val << offset;
+    if (offset + length > 64) {
+        a.data_[idx+1] |= val >> (64 - offset);
+    }
+}
+
+template <class T>
+unsigned ShiftAndMask(const T &x, int k) {
+    return (x >> k) & kRadixMask;
+}
+
+template <int N>
+unsigned ShiftAndMask(const GenericUint<N> &x, int k) {
+    return (x.data_[k / 64] >> k % 64) & kRadixMask;
+}
+
+template <class RandomIt, class ValueType, class Compare>
+inline void insert_sort_core_(RandomIt s, RandomIt e, Compare cmp)
 {
-    for (RandomAccessIterator i = s + 1; i < e; ++i) {
+    for (RandomIt i = s + 1; i < e; ++i) {
         if (cmp(*i, *(i - 1))) {
-            RandomAccessIterator j;
+            RandomIt j;
             ValueType tmp = *i;
             *i = *(i - 1);
             for (j = i - 1; j > s && cmp(tmp, *(j - 1)); --j) {
@@ -68,15 +125,15 @@ inline void insert_sort_core_(RandomAccessIterator s, RandomAccessIterator e, Co
     }
 }
 
-template <class RandomAccessIterator, class ValueType, class RadixByte, class Compare, int kWhichByte>
-inline void radix_sort_core_(RandomAccessIterator s, RandomAccessIterator e, RadixByte rbyte, Compare cmp)
+template <class RandomIt, class ValueType, class GetKey, class Compare, int kShift>
+inline void radix_sort_core_(RandomIt s, RandomIt e, GetKey get_key, Compare cmp)
 {
-    RandomAccessIterator last_[kRadixBin + 1];
-    RandomAccessIterator *last = last_ + 1;
+    RandomIt last_[kRadixBin + 1];
+    RandomIt *last = last_ + 1;
     size_t count[kRadixBin] = {0};
 
-    for (RandomAccessIterator i = s; i < e; ++i) {
-        ++count[rbyte(*i, kWhichByte)];
+    for (RandomIt i = s; i < e; ++i) {
+        ++count[ShiftAndMask(get_key(*i), kShift)];
     }
 
     last_[0] = last_[1] = s;
@@ -85,67 +142,73 @@ inline void radix_sort_core_(RandomAccessIterator s, RandomAccessIterator e, Rad
     }
 
     for (int i = 0; i < kRadixBin; ++i) {
-        RandomAccessIterator end = last[i-1] + count[i];
+        RandomIt end = last[i-1] + count[i];
         while (last[i] != end) {
             ValueType swapper = *last[i];
-            int tag = rbyte(swapper, kWhichByte);
+            int tag = ShiftAndMask(get_key(swapper), kShift);
             if (tag != i) {
                 do {
                     std::swap(swapper, *last[tag]++);
-                } while ((tag = rbyte(swapper, kWhichByte)) != i);
+                } while ((tag = ShiftAndMask(get_key(swapper), kShift)) != i);
                 *last[i] = swapper;
             }
             ++last[i];
         }
     }
 
-    if (kWhichByte > 0) {
+    if (kShift > 0) {
         for (int i = 0; i < kRadixBin; ++i) {
             if (count[i] > kInsertSortThreshold) {
-                radix_sort_core_<RandomAccessIterator, ValueType, RadixByte, Compare,
-                                  (kWhichByte > 0 ? (kWhichByte - 1) : 0)>
-                                  (last[i-1], last[i], rbyte, cmp);
+                radix_sort_core_<RandomIt, ValueType, GetKey, Compare, 
+                                  (kShift > 0 ? (kShift - kRadixBits) : 0)>
+                                  (last[i-1], last[i], get_key, cmp);
             } else if (count[i] > 1) {
-                insert_sort_core_<RandomAccessIterator, ValueType, Compare>(last[i-1], last[i], cmp);
+                insert_sort_core_<RandomIt, ValueType, Compare>(last[i-1], last[i], cmp);
             }
         }
     }
 }
 
-template <class RandomAccessIterator, class ValueType, class RadixByte, class Compare>
-inline void radix_sort_entry_(RandomAccessIterator s, RandomAccessIterator e, ValueType*,
-                              RadixByte rbyte, Compare cmp)
+template <class RandomIt, class ValueType, class GetKey, class Compare>
+inline void radix_sort_entry_(RandomIt s, RandomIt e, GetKey get_key, Compare cmp)
 {
     if (e - s <= (int)kInsertSortThreshold)
-        insert_sort_core_<RandomAccessIterator, ValueType, Compare>(s, e, cmp);
+        insert_sort_core_<RandomIt, ValueType, Compare>(s, e, cmp);
+    else if (GetKey::nBits % kRadixBits == 0)
+        radix_sort_core_<RandomIt, ValueType, GetKey, Compare, GetKey::nBits - kRadixBits>(s, e, get_key, cmp);
     else
-        radix_sort_core_<RandomAccessIterator, ValueType, RadixByte,
-                          Compare, RadixByte::nBytes - 1>(s, e, rbyte, cmp);
+        radix_sort_core_<RandomIt, ValueType, GetKey, Compare, GetKey::nBits - GetKey::nBits % kRadixBits>(s, e, get_key, cmp);
 }
 
-template <class RandomAccessIterator, class ValueType>
-inline void radix_sort_entry_(RandomAccessIterator s, RandomAccessIterator e, ValueType *)
+template <class RandomIt, class ValueType, class GetKey>
+inline void radix_sort_entry_(RandomIt s, RandomIt e, ValueType*, GetKey get_key)
+{
+    radix_sort_entry_<RandomIt, ValueType, GetKey, CompareKey<GetKey, ValueType> >(s, e, get_key, CompareKey<GetKey, ValueType>());
+}
+
+template <class RandomIt, class ValueType>
+inline void radix_sort_entry_(RandomIt s, RandomIt e, ValueType *)
 {
     if (ValueType(-1) > ValueType(0)) {
-        radix_sort_entry_(s, e, (ValueType*)(0), RadixByteUnsigned<ValueType>(), std::less<ValueType>());
+        radix_sort_entry_<RandomIt, ValueType, GetKeyUnsignedInteger<ValueType>, std::less<ValueType> >(s, e, GetKeyUnsignedInteger<ValueType>(), std::less<ValueType>());
     } else {
-        radix_sort_entry_(s, e, (ValueType*)(0), RadixByteSigned<ValueType>(), std::less<ValueType>());
+        radix_sort_entry_<RandomIt, ValueType, GetKeySignedInteger<ValueType>, std::less<ValueType> >(s, e, GetKeySignedInteger<ValueType>(), std::less<ValueType>());
     }
 }
 
 //================= INTERFACES ====================
 
-template <class RandomAccessIterator, class RadixByte, class Compare>
-inline void radix_sort(RandomAccessIterator s, RandomAccessIterator e, RadixByte rbyte, Compare cmp)
+template <class RandomIt, class GetKey>
+inline void radix_sort(RandomIt s, RandomIt e, GetKey get_key)
 {
-    typename std::iterator_traits<RandomAccessIterator>::value_type *dummy(0);
-    radix_sort_entry_(s, e, dummy, rbyte, cmp);
+    typename std::iterator_traits<RandomIt>::value_type *dummy(0);
+    radix_sort_entry_(s, e, dummy, get_key);
 }
 
-template <class RandomAccessIterator>
-inline void radix_sort(RandomAccessIterator s, RandomAccessIterator e)
+template <class RandomIt>
+inline void radix_sort(RandomIt s, RandomIt e)
 {
-    typename std::iterator_traits<RandomAccessIterator>::value_type *dummy(0);
+    typename std::iterator_traits<RandomIt>::value_type *dummy(0);
     radix_sort_entry_(s, e, dummy);
 }
 
