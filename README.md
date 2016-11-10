@@ -51,7 +51,7 @@ inline void radix_sort(RandomIt s, RandomIt e, RadixByte rbyte, Compare cmp)
 
 `kx::radix_sort` will sort items byte by byte (i.e. the bucket size is 256 for each round). A `RadixByte` struct must implements the following public interfaces,
 ```cpp
-struct SampleRadix {
+struct SampleRadixByte {
     static const int nBytes;
     int operator() (const T &x, int k);
 };

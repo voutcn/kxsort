@@ -13,20 +13,16 @@ uint64_t rand64() {
 }
 
 struct u64p {
-	uint64_t x, y;
+	uint64_t x[4];
 	bool operator< (const u64p &rhs) const {
-		if (x != rhs.x) return x < rhs.x;
-		return y < rhs.y;
+		return x[3] < rhs.x[3];
 	}
 };
 
-struct GetKeyU64P {
-	static const int nBits = 128;
-	kx::GenericUint<nBits> operator() (const u64p &a) {
-		kx::GenericUint<nBits> ret;
-		kx::set<0, 64>(ret, a.y);
-		kx::set<64, 64>(ret, a.x);
-		return ret;
+struct RadixTraitsU64P {
+	static const int nBytes = 8;
+	int operator() (const u64p &a, int k) {
+		return a.x[3] >> (k * 8) & 0xFF;
 	}
 };
 
@@ -34,12 +30,12 @@ struct GetKeyU64P {
 
 #define test_sort_i32(name, N, sort) \
 do { \
-	double tot_time = 0; \
+	double tot_time = 0, tot_time_sorted = 0; \
 	for (int re = 0; re < REP; ++re) { \
 		int *a = new int[N]; \
 		srand(10086); \
 		for (size_t i = 0; i < N; ++i) { \
-			a[i] = rand() * (rand() % 2 == 1 ? -1 : 1); \
+			a[i] = rand() * (rand() & 1 ? -1 : 1); \
 		} \
 		clock_t t1 = clock(); \
 		sort; \
@@ -48,14 +44,21 @@ do { \
 			fprintf(stderr, "%s: incorrect!\n", name); \
 		} \
 		tot_time += (double)(t2 - t1) / CLOCKS_PER_SEC; \
+		t1 = clock(); \
+		sort; \
+		t2 = clock(); \
+		if (!is_sorted(a, a + N)) { \
+			fprintf(stderr, "%s: incorrect!\n", name); \
+		} \
+		tot_time_sorted += (double)(t2 - t1) / CLOCKS_PER_SEC; \
 		delete[] a; \
 	} \
-	fprintf(stderr, "%s int: %lf\n", name, tot_time / REP); \
+	fprintf(stderr, "%s int: %lf %lf\n", name, tot_time / REP, tot_time_sorted / REP); \
 } while (0);
 
 #define test_sort_u32(name, N, sort) \
 do { \
-	double tot_time = 0; \
+	double tot_time = 0, tot_time_sorted = 0; \
 	for (int re = 0; re < REP; ++re) { \
 		uint32_t *a = new uint32_t[N]; \
 		srand(10086); \
@@ -69,14 +72,21 @@ do { \
 			fprintf(stderr, "%s: incorrect!\n", name); \
 		} \
 		tot_time += (double)(t2 - t1) / CLOCKS_PER_SEC; \
+		t1 = clock(); \
+		sort; \
+		t2 = clock(); \
+		if (!is_sorted(a, a + N)) { \
+			fprintf(stderr, "%s: incorrect!\n", name); \
+		} \
+		tot_time_sorted += (double)(t2 - t1) / CLOCKS_PER_SEC; \
 		delete[] a; \
 	} \
-	fprintf(stderr, "%s uint32_t: %lf\n", name, tot_time / REP); \
+	fprintf(stderr, "%s uint32_t: %lf %lf\n", name, tot_time / REP, tot_time_sorted / REP); \
 } while (0);
 
 #define test_sort_u64(name, N, sort) \
 do { \
-	double tot_time = 0; \
+	double tot_time = 0, tot_time_sorted = 0; \
 	for (int re = 0; re < REP; ++re) { \
 		uint64_t *a = new uint64_t[N]; \
 		srand(10086); \
@@ -90,19 +100,26 @@ do { \
 			fprintf(stderr, "%s: incorrect!\n", name); \
 		} \
 		tot_time += (double)(t2 - t1) / CLOCKS_PER_SEC; \
+		t1 = clock(); \
+		sort; \
+		t2 = clock(); \
+		if (!is_sorted(a, a + N)) { \
+			fprintf(stderr, "%s: incorrect!\n", name); \
+		} \
+		tot_time_sorted += (double)(t2 - t1) / CLOCKS_PER_SEC; \
 		delete[] a; \
 	} \
-	fprintf(stderr, "%s uint64_t: %lf\n", name, tot_time / REP); \
+	fprintf(stderr, "%s uint64_t: %lf %lf\n", name, tot_time / REP, tot_time_sorted / REP); \
 } while (0);
 
 #define test_sort_u64p(name, N, sort) \
 do { \
-	double tot_time = 0; \
+	double tot_time = 0, tot_time_sorted = 0; \
 	for (int re = 0; re < REP; ++re) { \
 		u64p *a = new u64p[N]; \
 		srand(10086); \
 		for (size_t i = 0; i < N; ++i) { \
-			a[i].x = rand64(); a[i].y = rand64(); \
+			for (int j = 0; j < 4; ++j) a[i].x[j] = rand64(); \
 		} \
 		clock_t t1 = clock(); \
 		sort; \
@@ -111,9 +128,16 @@ do { \
 			fprintf(stderr, "%s: incorrect!\n", name); \
 		} \
 		tot_time += (double)(t2 - t1) / CLOCKS_PER_SEC; \
+		t1 = clock(); \
+		sort; \
+		t2 = clock(); \
+		if (!is_sorted(a, a + N)) { \
+			fprintf(stderr, "%s: incorrect!\n", name); \
+		} \
+		tot_time_sorted += (double)(t2 - t1) / CLOCKS_PER_SEC; \
 		delete[] a; \
 	} \
-	fprintf(stderr, "%s u64p: %lf\n", name, tot_time / REP); \
+	fprintf(stderr, "%s u64p: %lf %lf\n", name, tot_time / REP, tot_time_sorted / REP); \
 } while (0);
 
 #define sort_key_u64(a) (a)
@@ -145,7 +169,7 @@ int main(int argc, char **argv) {
 		test_sort_u64("klib_radix_sort", N, radix_sort_u64(a, a + N));
 		test_sort_u64("std::sort", N, std::sort(a, a + N));
 
-		test_sort_u64p("kx::radix_sort", N, kx::radix_sort(a, a + N, GetKeyU64P()));
+		test_sort_u64p("kx::radix_sort", N, kx::radix_sort(a, a + N, RadixTraitsU64P()));
 		test_sort_u64p("std::sort", N, std::sort(a, a + N));
 		fprintf(stderr, "\n");
 	}

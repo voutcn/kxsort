@@ -25,8 +25,6 @@
 #ifndef KXSORT_H__
 #define KXSORT_H__
 
-#include <stdint.h>
-#include <memory.h>
 #include <iterator>
 #include <algorithm>
 
@@ -40,74 +38,19 @@ static const int kRadixBin = 1 << kRadixBits;
 //================= HELPING FUNCTIONS ====================
 
 template <class T>
-struct GetKeyUnsignedInteger {
-    static const int nBits = sizeof(T) * 8;
-    T operator() (const T &x) {
-        return x;
-    }
+struct RadixTraitsUnsigned {
+    static const int nBytes = sizeof(T);
+    int operator() (const T &x, int k) { return (x >> (kRadixBits * k)) & kRadixMask; }
 };
 
-template <class T>
-struct GetKeySignedInteger {
+template<class T>
+struct RadixTraitsSigned {
+    static const int nBytes = sizeof(T);
     static const T kMSB = T(0x80) << ((sizeof(T) - 1) * 8);
-    static const int nBits = sizeof(T) * 8;
-    T operator() (const T &x) {
-        return x ^ kMSB;
+    int operator() (const T &x, int k) {
+        return ((x ^ kMSB) >> (kRadixBits * k)) & kRadixMask;
     }
 };
-
-template <class GetKey, class T>
-struct CompareKey {
-    bool operator() (const T &a, const T &b) {
-        return GetKey()(a) < GetKey()(b);
-    }
-};
-
-template <int N>
-struct GenericUint {
-    static const int kNumUint64 = (N + 7) / 8;
-    uint64_t data_[kNumUint64];
-
-    GenericUint() {
-        memset(data_, 0, sizeof(data_));
-    }
-
-    void set(int pos, int length, uint64_t val) {
-        int offset = pos % 64;
-        int idx = pos / 64;
-        data_[idx] |= val << offset;
-        if (offset + length > 64) {
-            data_[idx+1] |= val >> (64 - offset);
-        }
-    }
-
-    bool operator<(const GenericUint<N> &rhs) const {
-        for (int i = kNumUint64 - 1; i >= 0; --i) {
-            if (data_[i] != rhs.data_[i]) return data_[i] < rhs.data_[i];
-        }
-        return false;
-    }
-};
-
-template <int pos, int length, int N>
-void set(GenericUint<N> &a, uint64_t val) {
-    const int offset = pos % 64;
-    const int idx = pos / 64;
-    a.data_[idx] |= val << offset;
-    if (offset + length > 64) {
-        a.data_[idx+1] |= val >> (64 - offset);
-    }
-}
-
-template <class T>
-unsigned ShiftAndMask(const T &x, int k) {
-    return (x >> k) & kRadixMask;
-}
-
-template <int N>
-unsigned ShiftAndMask(const GenericUint<N> &x, int k) {
-    return (x.data_[k / 64] >> k % 64) & kRadixMask;
-}
 
 template <class RandomIt, class ValueType, class Compare>
 inline void insert_sort_core_(RandomIt s, RandomIt e, Compare cmp)
@@ -125,43 +68,45 @@ inline void insert_sort_core_(RandomIt s, RandomIt e, Compare cmp)
     }
 }
 
-template <class RandomIt, class ValueType, class GetKey, class Compare, int kShift>
-inline void radix_sort_core_(RandomIt s, RandomIt e, GetKey get_key, Compare cmp)
+template <class RandomIt, class ValueType, class RadixTraits, class Compare, int kWhichByte>
+inline void radix_sort_core_(RandomIt s, RandomIt e, RadixTraits radix_traits, Compare cmp)
 {
     RandomIt last_[kRadixBin + 1];
     RandomIt *last = last_ + 1;
     size_t count[kRadixBin] = {0};
 
     for (RandomIt i = s; i < e; ++i) {
-        ++count[ShiftAndMask(get_key(*i), kShift)];
+        ++count[radix_traits(*i, kWhichByte)];
     }
 
     last_[0] = last_[1] = s;
+
     for (int i = 1; i < kRadixBin; ++i) {
         last[i] = last[i-1] + count[i-1];
     }
 
     for (int i = 0; i < kRadixBin; ++i) {
         RandomIt end = last[i-1] + count[i];
+        if (end == e) { last[i] = e; break; }
         while (last[i] != end) {
             ValueType swapper = *last[i];
-            int tag = ShiftAndMask(get_key(swapper), kShift);
+            int tag = radix_traits(swapper, kWhichByte);
             if (tag != i) {
                 do {
                     std::swap(swapper, *last[tag]++);
-                } while ((tag = ShiftAndMask(get_key(swapper), kShift)) != i);
+                } while ((tag = radix_traits(swapper, kWhichByte)) != i);
                 *last[i] = swapper;
             }
             ++last[i];
         }
     }
 
-    if (kShift > 0) {
+    if (kWhichByte > 0) {
         for (int i = 0; i < kRadixBin; ++i) {
             if (count[i] > kInsertSortThreshold) {
-                radix_sort_core_<RandomIt, ValueType, GetKey, Compare, 
-                                  (kShift > 0 ? (kShift - kRadixBits) : 0)>
-                                  (last[i-1], last[i], get_key, cmp);
+                radix_sort_core_<RandomIt, ValueType, RadixTraits, Compare,
+                                  (kWhichByte > 0 ? (kWhichByte - 1) : 0)>
+                                  (last[i-1], last[i], radix_traits, cmp);
             } else if (count[i] > 1) {
                 insert_sort_core_<RandomIt, ValueType, Compare>(last[i-1], last[i], cmp);
             }
@@ -169,40 +114,48 @@ inline void radix_sort_core_(RandomIt s, RandomIt e, GetKey get_key, Compare cmp
     }
 }
 
-template <class RandomIt, class ValueType, class GetKey, class Compare>
-inline void radix_sort_entry_(RandomIt s, RandomIt e, GetKey get_key, Compare cmp)
+template <class RandomIt, class ValueType, class RadixTraits, class Compare>
+inline void radix_sort_entry_(RandomIt s, RandomIt e, ValueType*,
+                              RadixTraits radix_traits, Compare cmp)
 {
     if (e - s <= (int)kInsertSortThreshold)
         insert_sort_core_<RandomIt, ValueType, Compare>(s, e, cmp);
-    else if (GetKey::nBits % kRadixBits == 0)
-        radix_sort_core_<RandomIt, ValueType, GetKey, Compare, GetKey::nBits - kRadixBits>(s, e, get_key, cmp);
     else
-        radix_sort_core_<RandomIt, ValueType, GetKey, Compare, GetKey::nBits - GetKey::nBits % kRadixBits>(s, e, get_key, cmp);
+        radix_sort_core_<RandomIt, ValueType, RadixTraits,
+                          Compare, RadixTraits::nBytes - 1>(s, e, radix_traits, cmp);
 }
 
-template <class RandomIt, class ValueType, class GetKey>
-inline void radix_sort_entry_(RandomIt s, RandomIt e, ValueType*, GetKey get_key)
+template <class RandomIt, class ValueType, class RadixTraits>
+inline void radix_sort_entry_(RandomIt s, RandomIt e, ValueType* dummy,
+                              RadixTraits radix_traits)
 {
-    radix_sort_entry_<RandomIt, ValueType, GetKey, CompareKey<GetKey, ValueType> >(s, e, get_key, CompareKey<GetKey, ValueType>());
+    return radix_sort_entry_(s, e, dummy, radix_traits, std::less<ValueType>());
 }
 
 template <class RandomIt, class ValueType>
 inline void radix_sort_entry_(RandomIt s, RandomIt e, ValueType *)
 {
     if (ValueType(-1) > ValueType(0)) {
-        radix_sort_entry_<RandomIt, ValueType, GetKeyUnsignedInteger<ValueType>, std::less<ValueType> >(s, e, GetKeyUnsignedInteger<ValueType>(), std::less<ValueType>());
+        radix_sort_entry_(s, e, (ValueType*)(0), RadixTraitsUnsigned<ValueType>(), std::less<ValueType>());
     } else {
-        radix_sort_entry_<RandomIt, ValueType, GetKeySignedInteger<ValueType>, std::less<ValueType> >(s, e, GetKeySignedInteger<ValueType>(), std::less<ValueType>());
+        radix_sort_entry_(s, e, (ValueType*)(0), RadixTraitsSigned<ValueType>(), std::less<ValueType>());
     }
 }
 
 //================= INTERFACES ====================
 
-template <class RandomIt, class GetKey>
-inline void radix_sort(RandomIt s, RandomIt e, GetKey get_key)
+template <class RandomIt, class RadixTraits, class Compare>
+inline void radix_sort(RandomIt s, RandomIt e, RadixTraits radix_traits, Compare cmp)
 {
     typename std::iterator_traits<RandomIt>::value_type *dummy(0);
-    radix_sort_entry_(s, e, dummy, get_key);
+    radix_sort_entry_(s, e, dummy, radix_traits, cmp);
+}
+
+template <class RandomIt, class RadixTraits>
+inline void radix_sort(RandomIt s, RandomIt e, RadixTraits radix_traits)
+{
+    typename std::iterator_traits<RandomIt>::value_type *dummy(0);
+    radix_sort_entry_(s, e, dummy, radix_traits);
 }
 
 template <class RandomIt>
