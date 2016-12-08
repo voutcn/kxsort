@@ -13,16 +13,20 @@ uint64_t rand64() {
 }
 
 struct u64p {
-	uint64_t x[4];
-	bool operator< (const u64p &rhs) const {
-		return x[3] < rhs.x[3];
+	uint64_t x[2];
+	bool operator <(const u64p &y) const {
+		if (x[1] != y.x[1]) return x[1] < y.x[1];
+		return x[0] < y.x[0];
 	}
 };
 
 struct RadixTraitsU64P {
-	static const int nBytes = 8;
-	int operator() (const u64p &a, int k) {
-		return a.x[3] >> (k * 8) & 0xFF;
+	static const int nBytes = 16;
+	int kth_byte(const u64p &a, int k) {
+		return a.x[k / 8] >> (k % 8 * 8) & 0xFF;
+	}
+	bool cmp(const u64p &x, const u64p &y) {
+		return x < y;
 	}
 };
 
@@ -119,7 +123,7 @@ do { \
 		u64p *a = new u64p[N]; \
 		srand(10086); \
 		for (size_t i = 0; i < N; ++i) { \
-			for (int j = 0; j < 4; ++j) a[i].x[j] = rand64(); \
+			for (int j = 0; j < 2; ++j) a[i].x[j] = rand64(); \
 		} \
 		clock_t t1 = clock(); \
 		sort; \
