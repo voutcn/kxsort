@@ -40,27 +40,29 @@ static const int kRadixBin = 1 << kRadixBits;
 template <class T>
 struct RadixTraitsUnsigned {
     static const int nBytes = sizeof(T);
-    int operator() (const T &x, int k) { return (x >> (kRadixBits * k)) & kRadixMask; }
+    int kth_byte (const T &x, int k) { return (x >> (kRadixBits * k)) & kRadixMask; }
+    bool cmp(const T &x, const T &y) { return x < y; }
 };
 
 template<class T>
 struct RadixTraitsSigned {
     static const int nBytes = sizeof(T);
     static const T kMSB = T(0x80) << ((sizeof(T) - 1) * 8);
-    int operator() (const T &x, int k) {
+    int kth_byte (const T &x, int k) {
         return ((x ^ kMSB) >> (kRadixBits * k)) & kRadixMask;
     }
+    bool cmp(const T &x, const T &y) { return x < y; }
 };
 
-template <class RandomIt, class ValueType, class Compare>
-inline void insert_sort_core_(RandomIt s, RandomIt e, Compare cmp)
+template <class RandomIt, class ValueType, class RadixTraits>
+inline void insert_sort_core_(RandomIt s, RandomIt e, RadixTraits radix_traits)
 {
     for (RandomIt i = s + 1; i < e; ++i) {
-        if (cmp(*i, *(i - 1))) {
+        if (radix_traits.cmp(*i, *(i - 1))) {
             RandomIt j;
             ValueType tmp = *i;
             *i = *(i - 1);
-            for (j = i - 1; j > s && cmp(tmp, *(j - 1)); --j) {
+            for (j = i - 1; j > s && radix_traits.cmp(tmp, *(j - 1)); --j) {
                 *j = *(j - 1);
             }
             *j = tmp;
@@ -68,15 +70,15 @@ inline void insert_sort_core_(RandomIt s, RandomIt e, Compare cmp)
     }
 }
 
-template <class RandomIt, class ValueType, class RadixTraits, class Compare, int kWhichByte>
-inline void radix_sort_core_(RandomIt s, RandomIt e, RadixTraits radix_traits, Compare cmp)
+template <class RandomIt, class ValueType, class RadixTraits, int kWhichByte>
+inline void radix_sort_core_(RandomIt s, RandomIt e, RadixTraits radix_traits)
 {
     RandomIt last_[kRadixBin + 1];
     RandomIt *last = last_ + 1;
     size_t count[kRadixBin] = {0};
 
     for (RandomIt i = s; i < e; ++i) {
-        ++count[radix_traits(*i, kWhichByte)];
+        ++count[radix_traits.kth_byte(*i, kWhichByte)];
     }
 
     last_[0] = last_[1] = s;
@@ -90,11 +92,11 @@ inline void radix_sort_core_(RandomIt s, RandomIt e, RadixTraits radix_traits, C
         if (end == e) { last[i] = e; break; }
         while (last[i] != end) {
             ValueType swapper = *last[i];
-            int tag = radix_traits(swapper, kWhichByte);
+            int tag = radix_traits.kth_byte(swapper, kWhichByte);
             if (tag != i) {
                 do {
                     std::swap(swapper, *last[tag]++);
-                } while ((tag = radix_traits(swapper, kWhichByte)) != i);
+                } while ((tag = radix_traits.kth_byte(swapper, kWhichByte)) != i);
                 *last[i] = swapper;
             }
             ++last[i];
@@ -104,52 +106,37 @@ inline void radix_sort_core_(RandomIt s, RandomIt e, RadixTraits radix_traits, C
     if (kWhichByte > 0) {
         for (int i = 0; i < kRadixBin; ++i) {
             if (count[i] > kInsertSortThreshold) {
-                radix_sort_core_<RandomIt, ValueType, RadixTraits, Compare,
+                radix_sort_core_<RandomIt, ValueType, RadixTraits,
                                   (kWhichByte > 0 ? (kWhichByte - 1) : 0)>
-                                  (last[i-1], last[i], radix_traits, cmp);
+                                  (last[i-1], last[i], radix_traits);
             } else if (count[i] > 1) {
-                insert_sort_core_<RandomIt, ValueType, Compare>(last[i-1], last[i], cmp);
+                insert_sort_core_<RandomIt, ValueType, RadixTraits>(last[i-1], last[i], radix_traits);
             }
         }
     }
 }
 
-template <class RandomIt, class ValueType, class RadixTraits, class Compare>
-inline void radix_sort_entry_(RandomIt s, RandomIt e, ValueType*,
-                              RadixTraits radix_traits, Compare cmp)
-{
-    if (e - s <= (int)kInsertSortThreshold)
-        insert_sort_core_<RandomIt, ValueType, Compare>(s, e, cmp);
-    else
-        radix_sort_core_<RandomIt, ValueType, RadixTraits,
-                          Compare, RadixTraits::nBytes - 1>(s, e, radix_traits, cmp);
-}
-
 template <class RandomIt, class ValueType, class RadixTraits>
-inline void radix_sort_entry_(RandomIt s, RandomIt e, ValueType* dummy,
+inline void radix_sort_entry_(RandomIt s, RandomIt e, ValueType*,
                               RadixTraits radix_traits)
 {
-    return radix_sort_entry_(s, e, dummy, radix_traits, std::less<ValueType>());
+    if (e - s <= (int)kInsertSortThreshold)
+        insert_sort_core_<RandomIt, ValueType, RadixTraits>(s, e, radix_traits);
+    else
+        radix_sort_core_<RandomIt, ValueType, RadixTraits, RadixTraits::nBytes - 1>(s, e, radix_traits);
 }
 
 template <class RandomIt, class ValueType>
 inline void radix_sort_entry_(RandomIt s, RandomIt e, ValueType *)
 {
     if (ValueType(-1) > ValueType(0)) {
-        radix_sort_entry_(s, e, (ValueType*)(0), RadixTraitsUnsigned<ValueType>(), std::less<ValueType>());
+        radix_sort_entry_(s, e, (ValueType*)(0), RadixTraitsUnsigned<ValueType>());
     } else {
-        radix_sort_entry_(s, e, (ValueType*)(0), RadixTraitsSigned<ValueType>(), std::less<ValueType>());
+        radix_sort_entry_(s, e, (ValueType*)(0), RadixTraitsSigned<ValueType>());
     }
 }
 
 //================= INTERFACES ====================
-
-template <class RandomIt, class RadixTraits, class Compare>
-inline void radix_sort(RandomIt s, RandomIt e, RadixTraits radix_traits, Compare cmp)
-{
-    typename std::iterator_traits<RandomIt>::value_type *dummy(0);
-    radix_sort_entry_(s, e, dummy, radix_traits, cmp);
-}
 
 template <class RandomIt, class RadixTraits>
 inline void radix_sort(RandomIt s, RandomIt e, RadixTraits radix_traits)
