@@ -75,7 +75,14 @@ You may want to look at some [examples](https://github.com/voutcn/kxsort/tree/ma
 
 ### Methodologies
 
-To be filled...
+An [MSD radix sort](https://en.wikipedia.org/wiki/Radix_sort#Most_significant_digit_radix_sorts) is implemented in `kx::radix_sort`. It partitions the input array with the most significant byte, and sort each partitions recursively. When the number of items in a partition is no more than 64, an insertion sort will be applied and no more recursion is needed.
+
+The implement here is substantially the same as the following implementations
+- [ac's klib radix_sort](https://attractivechaos.wordpress.com/2012/06/10/an-update-on-radix-sort/)
+- [Gorset's implementation](https://github.com/gorset/radix)
+- [Birkeland's PhD thesis](http://ntnu.diva-portal.org/smash/record.jsf?parentRecord=diva2%3A124514&pid=diva2%3A124519&dswid=-3545)
+
+`kx::radix_sort` is a bit faster than ac's `klib radix_sort` probably due to the using of C++ template, which may unfold the recursions.
 
 ### Limitations
 
