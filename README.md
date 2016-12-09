@@ -64,8 +64,8 @@ The function `compare(const T &x, const T &y)` should be compatible with `kth_by
 ```cpp
 bool another_compare(const T &x, const T &y) {
 	for (int k = nBytes - 1; k >= 0; --k) {
-		if (kth_byte(x) < kth_byte(y)) return true;
-		if (kth_byte(x) > kth_byte(y)) return false;
+		if (kth_byte(x, k) < kth_byte(y, k)) return true;
+		if (kth_byte(x, k) > kth_byte(y, k)) return false;
 	}
 	return false;
 }
