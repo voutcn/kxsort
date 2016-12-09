@@ -41,8 +41,8 @@ template <class RandomIt>
 void radix_sort(RandomIt s, RandomIt e)
 ```
 
-#### 2. User-defined structures
-For sorting user-defined structure, the user should also define a "RadixByte" struct and a "Compare" function (or functional objects).
+#### 2. Other class or struct
+For sorting other structures, the user should define a "RadixTrait" for them:
 
 ```cpp
 template <class RandomIt, class RadixTrait>
