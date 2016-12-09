@@ -71,7 +71,7 @@ bool another_compare(const T &x, const T &y) {
 }
 ```
 
-You may want to look at some [examples](https://github.com/voutcn/kxsort/tree/examples).
+You may want to look at some [examples](https://github.com/voutcn/kxsort/tree/master/examples).
 
 ### Methodologies
 
