@@ -45,21 +45,39 @@ void radix_sort(RandomIt s, RandomIt e)
 For sorting user-defined structure, the user should also define a "RadixByte" struct and a "Compare" function (or functional objects).
 
 ```cpp
-template <class RandomIt, class RadixByte, class Compare>
-inline void radix_sort(RandomIt s, RandomIt e, RadixByte rbyte, Compare cmp)
+template <class RandomIt, class RadixTrait>
+inline void radix_sort(RandomIt s, RandomIt e, RadixTrait r_trait)
 ```
 
-`kx::radix_sort` will sort items byte by byte (i.e. the bucket size is 256 for each round). A `RadixByte` struct must implements the following public interfaces,
+`kx::radix_sort` will sort items byte by byte (i.e. the bucket size is 256 for each round). A `RadixTrait` struct must implements the following public interfaces,
 ```cpp
-struct SampleRadixByte {
+struct SampleRadixTrait {
     static const int nBytes;
-    int operator() (const T &x, int k);
+    int kth_byte(const T &x, int k);
+    bool compare(const T &x, const T &y);
 };
 ```
-where `nBytes` specifies how many passes the radix sort will go over, and `operator() (const T &x, int k)`  maps the k-th byte of the user-defined class `T` to `[0, 255]`. k=0 means the it is the least significant byte.
+where `nBytes` specifies how many passes the radix sort will go over, and `kth_byte(const T &x, int k)`  is the function to extract the k-th byte of the `T` for radix sort, i.e. the byte used to process the `nBytes - 1 - k` round.
 
-The `Compare` function should be compatible to the definition of `RadixByte`.
+The function `compare(const T &x, const T &y)` should be compatible with `kth_byte`, which means it should return the same value as the following function:
+
+```cpp
+bool another_compare(const T &x, const T &y) {
+	for (int k = nBytes - 1; k >= 0; --k) {
+		if (kth_byte(x) < kth_byte(y)) return true;
+		if (kth_byte(x) > kth_byte(y)) return false;
+	}
+	return false;
+}
+```
+
+You may want to look at some [examples](https://github.com/voutcn/kxsort/tree/examples).
 
 ### Methodologies
 
-The 
+To be filled...
+
+### Limitations
+
+* It is not a stable sorting method.
+* It is slower than `std::sort` if the input sequence is nearly sorted.

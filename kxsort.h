@@ -41,7 +41,7 @@ template <class T>
 struct RadixTraitsUnsigned {
     static const int nBytes = sizeof(T);
     int kth_byte (const T &x, int k) { return (x >> (kRadixBits * k)) & kRadixMask; }
-    bool cmp(const T &x, const T &y) { return x < y; }
+    bool compare(const T &x, const T &y) { return x < y; }
 };
 
 template<class T>
@@ -51,18 +51,18 @@ struct RadixTraitsSigned {
     int kth_byte (const T &x, int k) {
         return ((x ^ kMSB) >> (kRadixBits * k)) & kRadixMask;
     }
-    bool cmp(const T &x, const T &y) { return x < y; }
+    bool compare(const T &x, const T &y) { return x < y; }
 };
 
 template <class RandomIt, class ValueType, class RadixTraits>
 inline void insert_sort_core_(RandomIt s, RandomIt e, RadixTraits radix_traits)
 {
     for (RandomIt i = s + 1; i < e; ++i) {
-        if (radix_traits.cmp(*i, *(i - 1))) {
+        if (radix_traits.compare(*i, *(i - 1))) {
             RandomIt j;
             ValueType tmp = *i;
             *i = *(i - 1);
-            for (j = i - 1; j > s && radix_traits.cmp(tmp, *(j - 1)); --j) {
+            for (j = i - 1; j > s && radix_traits.compare(tmp, *(j - 1)); --j) {
                 *j = *(j - 1);
             }
             *j = tmp;

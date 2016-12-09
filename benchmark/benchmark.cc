@@ -25,7 +25,7 @@ struct RadixTraitsU64P {
 	int kth_byte(const u64p &a, int k) {
 		return a.x[k / 8] >> (k % 8 * 8) & 0xFF;
 	}
-	bool cmp(const u64p &x, const u64p &y) {
+	bool compare(const u64p &x, const u64p &y) {
 		return x < y;
 	}
 };
