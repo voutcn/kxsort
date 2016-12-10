@@ -30,7 +30,7 @@ struct RadixTraitsU64P {
 	}
 };
 
-#define REP 1
+#define REP 10
 
 #define test_sort_i32(name, N, sort) \
 do { \

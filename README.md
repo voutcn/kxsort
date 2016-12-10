@@ -35,34 +35,33 @@ Time (sec.) for sorting 100 million random integers.
 
 ### APIs
 #### 1. Builtin Integers
-For sort all C++ builtin integers in ascending order, the API is the same as std::sort.
+To sort all C++ builtin integers in ascending order, the API is the same as std::sort.
 ```cpp
 template <class RandomIt>
-void radix_sort(RandomIt s, RandomIt e)
+void radix_sort(RandomIt s, RandomIt e);
 ```
 
 #### 2. Other class or struct
-For sorting other structures, the user should define a "RadixTrait" for them:
 
 ```cpp
-template <class RandomIt, class RadixTrait>
-inline void radix_sort(RandomIt s, RandomIt e, RadixTrait r_trait)
+template <class RandomIt, class RadixTraits>
+inline void radix_sort(RandomIt s, RandomIt e, RadixTraits r_traits);
 ```
 
-`kx::radix_sort` will sort items byte by byte (i.e. the bucket size is 256 for each round). A `RadixTrait` struct must implements the following public interfaces,
+To sort items of other value types, the user should define the *RadixTraits* for them. `kx::radix_sort` will sort items byte by byte (i.e. the bucket size is 256 for each round). A `RadixTraits` struct must implements the following public interfaces,
 ```cpp
-struct SampleRadixTrait {
+struct SampleRadixTraits {
     static const int nBytes;
-    int kth_byte(const T &x, int k);
-    bool compare(const T &x, const T &y);
+    int kth_byte(const YourType &x, int k);
+    bool compare(const YourType &x, const YourType &y);
 };
 ```
-where `nBytes` specifies how many passes the radix sort will go over, and `kth_byte(const T &x, int k)`  is the function to extract the k-th byte of the `T` for radix sort, i.e. the byte used to process the `nBytes - 1 - k` round.
+where `nBytes` specifies how many rounds the radix sort will go over, and `kth_byte(const YourType &x, int k)`  is the function to extract the k-th byte of the `x` for radix sort, i.e. the byte to be used in the `nBytes - 1 - k` round.
 
-The function `compare(const T &x, const T &y)` should be compatible with `kth_byte`, which means it should return the same value as the following function:
+The function `compare` should be compatible with `kth_byte`, which means it should return exactly the same results as the following function for any `x` and `y`, but the implementation may be faster:
 
 ```cpp
-bool another_compare(const T &x, const T &y) {
+bool another_compare(const YourType &x, const YourType &y) {
 	for (int k = nBytes - 1; k >= 0; --k) {
 		if (kth_byte(x, k) < kth_byte(y, k)) return true;
 		if (kth_byte(x, k) > kth_byte(y, k)) return false;
@@ -75,7 +74,7 @@ You may want to look at some [examples](https://github.com/voutcn/kxsort/tree/ma
 
 ### Methodologies
 
-An [MSD radix sort](https://en.wikipedia.org/wiki/Radix_sort#Most_significant_digit_radix_sorts) is implemented in `kx::radix_sort`. It partitions the input array with the most significant byte, and sort each partitions recursively. When the number of items in a partition is no more than 64, an insertion sort will be applied and no more recursion is needed.
+An [MSD radix sort](https://en.wikipedia.org/wiki/Radix_sort#Most_significant_digit_radix_sorts) is implemented in `kx::radix_sort`. It partitions the input array with the most significant byte, and sort each partitions recursively. When the number of items in a partition is no more than 64, an insertion sort will be applied and no more recursion is needed. The using of insertion sort is the reason why it requires a `compare` function in *RadixTraits*.
 
 The implement here is substantially the same as the following implementations
 - [ac's klib radix_sort](https://attractivechaos.wordpress.com/2012/06/10/an-update-on-radix-sort/)
